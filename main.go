@@ -7,9 +7,9 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"strings"
+	"sync"
 
 	"time"
 )
@@ -18,17 +18,44 @@ const DataLimit = 1024 * 1024 * 1024
 const TimeLimit = 1 * time.Hour
 
 type UserState struct {
+	mu                sync.Mutex
 	ActiveConnections int
 	DataUsed          int64
 }
 type GlobalState struct {
+	mu               sync.Mutex
 	UserMap          map[string]*UserState
 	ValidCredentials map[string]string
 }
 
+type dataTrackingWriter struct {
+	user *UserState
+	wc   io.WriteCloser
+}
+
+type nopCloserWriter struct {
+	http.ResponseWriter
+}
+
+func (n *nopCloserWriter) Close() error { return nil }
+
 const staticAuth = "user:pass"
 
-var globalstate GlobalState
+var globalState GlobalState
+
+func (d *dataTrackingWriter) Write(p []byte) (int, error) {
+	d.user.mu.Lock()
+	defer d.user.mu.Unlock()
+
+	if d.user.DataUsed+int64(len(p)) > DataLimit || d.user.DataUsed >= DataLimit {
+		d.wc.Close()
+		return 0, fmt.Errorf("Duomenu limitas viršytas")
+	}
+
+	d.user.DataUsed += int64(len(p))
+
+	return d.wc.Write(p)
+}
 
 func authenticate(r *http.Request) (username string, authorized bool) {
 	authHeader := r.Header.Get("Proxy-Authorization")
@@ -52,29 +79,10 @@ func authenticate(r *http.Request) (username string, authorized bool) {
 	user := credParts[0]
 	pass := credParts[1]
 
-	if allowedPass, ok := globalstate.ValidCredentials[user]; ok && allowedPass == pass {
+	if allowedPass, ok := globalState.ValidCredentials[user]; ok && allowedPass == pass {
 		return user, true
 	}
 	return "", false
-}
-
-func hello(w http.ResponseWriter, req *http.Request) {
-	fmt.Println(authenticate(req))
-	fmt.Fprintf(w, "pong\n")
-	response, err := http.Get("localhost:8080")
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(response)
-}
-
-func incrementConnections(username string) {
-	globalstate.UserMap[username].ActiveConnections++
-
-}
-
-func decreaseConnetions(username string) {
-	globalstate.UserMap[username].ActiveConnections--
 }
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,11 +94,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func tunnelConn(dst io.WriteCloser, src io.ReadCloser) int64 {
-	bytesCopied, _ := io.Copy(dst, src)
-	dst.Close()
-	src.Close()
-	return bytesCopied
+func tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *UserState) {
+	defer dst.Close()
+	defer src.Close()
+	limiter := &dataTrackingWriter{
+		user: user,
+		wc:   dst,
+	}
+	io.Copy(limiter, src)
+
 }
 
 func HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
@@ -100,15 +112,30 @@ func HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Autentifikavimo klaida", http.StatusUnauthorized)
 		return
 	}
+	globalState.mu.Lock()
+	user, exists := globalState.UserMap[username]
+	if !exists {
+		user = &UserState{}
+		globalState.UserMap[username] = user
+	}
+	globalState.mu.Unlock()
 
-	incrementConnections(username)
+	user.mu.Lock()
 
-	defer decreaseConnetions(username)
-
-	if globalstate.UserMap[username].ActiveConnections > 10 {
+	if globalState.UserMap[username].ActiveConnections >= 10 {
 		http.Error(w, "Virsytas maksimalus leistinas prisijungimų skaičius", http.StatusTooManyRequests)
 		return
 	}
+	user.ActiveConnections++
+	user.mu.Unlock()
+
+	defer func() {
+		user.mu.Lock()
+		user.ActiveConnections--
+		user.mu.Unlock()
+	}()
+
+	log.Printf("[HTTPS] Vartotojas: %s | Serveris: %s", username, r.Host)
 
 	targetConn, err := net.DialTimeout("tcp", r.Host, TimeLimit)
 	if err != nil {
@@ -141,69 +168,70 @@ func HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 	clientConn.SetDeadline(deadline)
 	targetConn.SetDeadline(deadline)
 
-	log.Println("Tunnel established")
-
-	go tunnelConn(targetConn, clientConn)
-	go tunnelConn(clientConn, targetConn)
-}
-
-func checkAndUpdateDataUsed(username string, dataSize int64) error {
-
-	if globalstate.UserMap[username].DataUsed+dataSize > DataLimit {
-		return fmt.Errorf("duomenų limitas (1GB) bus viršytas. Liko: %d B", DataLimit-globalstate.UserMap[username].DataUsed)
-	}
-
-	globalstate.UserMap[username].DataUsed += dataSize
-	return nil
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		tunnelConn(targetConn, clientConn, user)
+	}()
+	go func() {
+		defer wg.Done()
+		tunnelConn(clientConn, targetConn, user)
+	}()
+	wg.Wait()
 }
 
 func handleHTTPRequests(w http.ResponseWriter, r *http.Request) {
-
 	username, authorized := authenticate(r)
-
 	if !authorized {
 		http.Error(w, "Autentifikavimo klaida", http.StatusUnauthorized)
 		return
 	}
 
-	incrementConnections(username)
+	log.Printf("[HTTP] Vartotojas: %s | Serveris: %s", username, r.Host)
 
-	defer decreaseConnetions(username)
+	globalState.mu.Lock()
+	user, exists := globalState.UserMap[username]
+	if !exists {
+		user = &UserState{}
+		globalState.UserMap[username] = user
+	}
+	globalState.mu.Unlock()
 
-	if globalstate.UserMap[username].ActiveConnections > 10 {
-		http.Error(w, "Virsytas maksimalus leistinas prisijungimų skaičius", http.StatusTooManyRequests)
+	user.mu.Lock()
+	if user.ActiveConnections >= 10 {
+		user.mu.Unlock()
+		http.Error(w, "Limitas virsytas", http.StatusTooManyRequests)
 		return
 	}
+	user.ActiveConnections++
+	user.mu.Unlock()
 
-	requestBytes, _ := httputil.DumpRequest(r, false)
-	headerSize := int64(len(requestBytes))
-	contentLength := r.ContentLength
-	if contentLength == -1 {
-		contentLength = 0
-	}
-	incomingSize := headerSize + contentLength
+	defer func() {
+		user.mu.Lock()
+		user.ActiveConnections--
+		user.mu.Unlock()
+	}()
 
-	err := checkAndUpdateDataUsed(username, incomingSize)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusTooManyRequests)
+	user.mu.Lock()
+	if user.DataUsed > DataLimit {
+		user.mu.Unlock()
+		http.Error(w, "Duomenu limitas viršytas", http.StatusTooManyRequests)
+		return
 	}
+	user.mu.Unlock()
 
 	req := r.Clone(r.Context())
-	fmt.Println(req)
 	req.Header.Del("Proxy-Authorization")
 	req.RequestURI = ""
 
-	client := http.Client{
-		Timeout: 1 * time.Hour,
-	}
+	client := &http.Client{Timeout: 1 * time.Hour}
 	resp, err := client.Do(req)
 	if err != nil {
-		http.Error(w, "Serverio klaida", http.StatusServiceUnavailable)
+		http.Error(w, "Nepavyko pasiekti serverio", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-
-	fmt.Println(resp.Header)
 
 	for key, values := range resp.Header {
 		for _, value := range values {
@@ -211,15 +239,20 @@ func handleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
 
+	tracker := &dataTrackingWriter{user: user, wc: &nopCloserWriter{w}}
+	n, err := io.Copy(tracker, resp.Body)
+	if err != nil {
+		log.Printf("Ryšys nutrauktas: %v", err)
+	}
+	log.Printf("Užklausa baigta, persiųsta %d baitų", n)
 }
 
 func main() {
 	log.SetOutput(os.Stdout)
 
 	allowedUser := map[string]string{"user": "pass"}
-	globalstate = GlobalState{
+	globalState = GlobalState{
 		UserMap:          map[string]*UserState{},
 		ValidCredentials: allowedUser,
 	}
@@ -227,11 +260,3 @@ func main() {
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", http.HandlerFunc(proxyHandler)))
 }
-
-//var auth string
-//
-//for key, value := range globalState.ValidCredentials {
-//	auth = fmt.Sprintf("%s:%s", key, value)
-//}
-//basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-//fmt.Println(basicAuth)
