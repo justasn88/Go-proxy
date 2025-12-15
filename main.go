@@ -12,11 +12,16 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	allowedUser := map[string]string{"user": "pass"}
-	state.GlobalStateInstance = state.GlobalState{
+
+	myGlobalState := &state.GlobalState{
 		UserMap:          map[string]*state.UserState{},
 		ValidCredentials: allowedUser,
 	}
 
+	server := &proxy.ProxyServer{
+		GlobalState: myGlobalState,
+	}
+
 	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", http.HandlerFunc(proxy.ProxyHandler)))
+	log.Fatal(http.ListenAndServe(":8080", http.HandlerFunc(server.ProxyHandler)))
 }

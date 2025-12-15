@@ -34,5 +34,3 @@ func (g *GlobalState) Lock() {
 func (g *GlobalState) Unlock() {
 	g.mu.Unlock()
 }
-
-var GlobalStateInstance GlobalState

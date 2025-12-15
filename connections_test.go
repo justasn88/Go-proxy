@@ -16,17 +16,21 @@ import (
 const connections = 12
 
 func TestHTTPConnections(t *testing.T) {
-	state.GlobalStateInstance.Lock()
+	testGlobalState := &state.GlobalState{
+		UserMap:          make(map[string]*state.UserState),
+		ValidCredentials: map[string]string{"user": "pass"},
+	}
 
-	state.GlobalStateInstance.UserMap = make(map[string]*state.UserState)
-	state.GlobalStateInstance.ValidCredentials = map[string]string{"user": "pass"}
+	testGlobalState.Lock()
+	testGlobalState.UserMap["user"] = &state.UserState{}
+	testGlobalState.Unlock()
 
-	state.GlobalStateInstance.UserMap["user"] = &state.UserState{}
-
-	state.GlobalStateInstance.Unlock()
+	proxyInstance := &proxy.ProxyServer{
+		GlobalState: testGlobalState,
+	}
 
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer targetServer.Close()
@@ -36,15 +40,17 @@ func TestHTTPConnections(t *testing.T) {
 	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Host = strings.TrimPrefix(targetURL, "http://")
 		r.URL.Scheme = "http"
-		proxy.HandleHTTPRequests(w, r)
+
+		proxyInstance.HandleHTTPRequests(w, r)
 	})
+
 	proxyServer := httptest.NewServer(proxyHandler)
 	defer proxyServer.Close()
 
 	var user string
 	var pass string
 
-	for key, value := range state.GlobalStateInstance.ValidCredentials {
+	for key, value := range testGlobalState.ValidCredentials {
 		user = key
 		pass = value
 	}
@@ -63,10 +69,12 @@ func TestHTTPConnections(t *testing.T) {
 				DisableKeepAlives: true,
 				MaxIdleConns:      0,
 			}
-			client := &http.Client{
+
+			client := http.Client{
 				Timeout:   40 * time.Second,
 				Transport: transport,
 			}
+
 			req, _ := http.NewRequest(http.MethodGet, proxyServer.URL, nil)
 			req.Header.Set("Proxy-Authorization", authHeader)
 			resp, err := client.Do(req)
@@ -101,9 +109,9 @@ func TestHTTPConnections(t *testing.T) {
 	expectedRejected := connections - expectedSuccess
 
 	if successCount != expectedSuccess || rejectedCount != expectedRejected {
-		t.Errorf("Limitu tikrinimo klaida. Tikėtasi 10 OK ir %d TooManyRequests. Gauta: %d OK, %d Rejected",
-			expectedRejected, successCount, rejectedCount)
+		t.Errorf("Limitu tikrinimo klaida. Tiketasi gauti %v statusOK ir %v TooManyRequests. Gaunta: %v StatusOK, ir %v TooManyRequests", expectedSuccess, expectedRejected, successCount, rejectedCount)
 	} else {
-		t.Logf("Limitu testas sėkmingas. Gauta %d OK ir %d Rejected", successCount, rejectedCount)
+		t.Logf("Limitu testas sekmingas. Gaunta %v StatusOK ir %v TooManyRequests", successCount, rejectedCount)
 	}
+
 }

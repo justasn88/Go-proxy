@@ -12,16 +12,20 @@ import (
 	"time"
 )
 
-func ProxyHandler(w http.ResponseWriter, r *http.Request) {
+type ProxyServer struct {
+	GlobalState *state.GlobalState
+}
+
+func (p *ProxyServer) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodConnect {
-		HandleHTTPSConnect(w, r)
+		p.HandleHTTPSConnect(w, r)
 	} else {
-		HandleHTTPRequests(w, r)
+		p.HandleHTTPRequests(w, r)
 	}
 }
 
-func tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState) {
+func (p *ProxyServer) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState) {
 	defer dst.Close()
 	defer src.Close()
 	limiter := limits.NewTrackingWriter(user, dst)
@@ -29,24 +33,24 @@ func tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState) {
 
 }
 
-func HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
-	username, authorized := auth.Authenticate(r, state.GlobalStateInstance.ValidCredentials)
+func (p *ProxyServer) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
+	username, authorized := auth.Authenticate(r, p.GlobalState.ValidCredentials)
 
 	if !authorized {
 		http.Error(w, "Autentifikavimo klaida", http.StatusUnauthorized)
 		return
 	}
-	state.GlobalStateInstance.Lock()
-	user, exists := state.GlobalStateInstance.UserMap[username]
+	p.GlobalState.Lock()
+	user, exists := p.GlobalState.UserMap[username]
 	if !exists {
 		user = &state.UserState{}
-		state.GlobalStateInstance.UserMap[username] = user
+		p.GlobalState.UserMap[username] = user
 	}
-	state.GlobalStateInstance.Unlock()
+	p.GlobalState.Unlock()
 
 	user.Lock()
 
-	if state.GlobalStateInstance.UserMap[username].ActiveConnections >= 10 {
+	if p.GlobalState.UserMap[username].ActiveConnections >= 10 {
 		user.Unlock()
 		http.Error(w, "Virsytas maksimalus leistinas prisijungimų skaičius", http.StatusTooManyRequests)
 		return
@@ -106,17 +110,17 @@ func HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		tunnelConn(targetConn, clientConn, user)
+		p.tunnelConn(targetConn, clientConn, user)
 	}()
 	go func() {
 		defer wg.Done()
-		tunnelConn(clientConn, targetConn, user)
+		p.tunnelConn(clientConn, targetConn, user)
 	}()
 	wg.Wait()
 }
 
-func HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
-	username, authorized := auth.Authenticate(r, state.GlobalStateInstance.ValidCredentials)
+func (p *ProxyServer) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
+	username, authorized := auth.Authenticate(r, p.GlobalState.ValidCredentials)
 	if !authorized {
 		http.Error(w, "Autentifikavimo klaida", http.StatusUnauthorized)
 		return
@@ -124,13 +128,13 @@ func HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[HTTP] Vartotojas: %s | Serveris: %s", username, r.Host)
 
-	state.GlobalStateInstance.Lock()
-	user, exists := state.GlobalStateInstance.UserMap[username]
+	p.GlobalState.Lock()
+	user, exists := p.GlobalState.UserMap[username]
 	if !exists {
 		user = &state.UserState{}
-		state.GlobalStateInstance.UserMap[username] = user
+		p.GlobalState.UserMap[username] = user
 	}
-	state.GlobalStateInstance.Unlock()
+	p.GlobalState.Unlock()
 
 	user.Lock()
 	if user.ActiveConnections >= 10 {
