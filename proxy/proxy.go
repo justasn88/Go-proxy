@@ -184,9 +184,8 @@ func (p *ProxyServer) HandleHTTPRequests(w http.ResponseWriter, r *http.Request)
 	}
 
 	tracker := limits.NewTrackingWriter(user, &limits.NopCloserWriter{w})
-	n, err := io.Copy(tracker, resp.Body)
+	_, err = io.Copy(tracker, resp.Body)
 	if err != nil {
 		log.Printf("Ryšys nutrauktas: %v", err)
 	}
-	log.Printf("Užklausa baigta, persiųsta %d baitų", n)
 }
