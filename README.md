@@ -11,6 +11,6 @@ curl -x http://user:pass@localhost:8080 http://example.com
 
 curl -x http://user:pass@localhost:8080 https://google.com
 
-Padarytas ir testas. Jį galima paleisti su komanda:
+Padarytas unit testas autentifikavimui ir integracinis testas tikrinantis vartotojo prisijungimo skaičių. Juos galima paleisti su komanda:
 
 go test ./...
