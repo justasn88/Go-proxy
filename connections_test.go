@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const connections = 12
+const connections = 14
 
 func TestHTTPConnections(t *testing.T) {
 	testGlobalState := &state.GlobalState{

@@ -23,10 +23,11 @@ func Authenticate(r *http.Request, validCredentials map[string]string) (username
 	}
 
 	credentials := string(decoded)
-	credParts := strings.Split(credentials, ":")
+	user, pass, found := strings.Cut(credentials, ":")
 
-	user := credParts[0]
-	pass := credParts[1]
+	if !found {
+		return "", false
+	}
 
 	if allowedPass, ok := validCredentials[user]; ok && allowedPass == pass {
 		return user, true

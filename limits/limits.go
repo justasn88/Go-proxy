@@ -30,27 +30,39 @@ func (n *NopCloserWriter) Close() error { return nil }
 func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 	d.user.Lock()
 
-	if d.user.DataUsed+int64(len(p)) > DataLimit || d.user.DataUsed > DataLimit {
+	if d.user.DataUsed > DataLimit {
 		d.user.Unlock()
 		return 0, fmt.Errorf("Duomenu limitas viršytas")
 	}
 
-	d.user.DataUsed += int64(len(p))
 	d.user.Unlock()
-	return d.wc.Write(p)
+
+	n, err := d.wc.Write(p)
+
+	if n > 0 {
+		d.user.Lock()
+		d.user.DataUsed += int64(n)
+		d.user.Unlock()
+	}
+
+	return n, err
 }
 
 func (d *dataTrackingReader) Read(p []byte) (int, error) {
-	d.user.Lock()
 
-	if d.user.DataUsed+int64(len(p)) > DataLimit || d.user.DataUsed > DataLimit {
+	d.user.Lock()
+	if d.user.DataUsed > DataLimit {
 		d.user.Unlock()
 		return 0, fmt.Errorf("Duomenu limitas viršytas")
 	}
+	d.user.Unlock()
 
 	n, err := d.rc.Read(p)
-	d.user.DataUsed += int64(n)
-	d.user.Unlock()
+	if n > 0 {
+		d.user.Lock()
+		d.user.DataUsed += int64(n)
+		d.user.Unlock()
+	}
 	return n, err
 }
 

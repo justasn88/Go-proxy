@@ -2,11 +2,7 @@ package state
 
 import (
 	"sync"
-	"time"
 )
-
-const DataLimit = 1024 * 1024 * 1024
-const TimeLimit = 1 * time.Hour
 
 type UserState struct {
 	mu                sync.Mutex
