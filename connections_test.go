@@ -1,6 +1,8 @@
 package main
 
 import (
+	"awesomeProject11/proxy"
+	"awesomeProject11/state"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -14,14 +16,14 @@ import (
 const connections = 12
 
 func TestHTTPConnections(t *testing.T) {
-	globalState.mu.Lock()
+	state.GlobalStateInstance.Lock()
 
-	globalState.UserMap = make(map[string]*UserState)
-	globalState.ValidCredentials = map[string]string{"user": "pass"}
+	state.GlobalStateInstance.UserMap = make(map[string]*state.UserState)
+	state.GlobalStateInstance.ValidCredentials = map[string]string{"user": "pass"}
 
-	globalState.UserMap["user"] = &UserState{}
+	state.GlobalStateInstance.UserMap["user"] = &state.UserState{}
 
-	globalState.mu.Unlock()
+	state.GlobalStateInstance.Unlock()
 
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
@@ -34,7 +36,7 @@ func TestHTTPConnections(t *testing.T) {
 	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Host = strings.TrimPrefix(targetURL, "http://")
 		r.URL.Scheme = "http"
-		handleHTTPRequests(w, r)
+		proxy.HandleHTTPRequests(w, r)
 	})
 	proxyServer := httptest.NewServer(proxyHandler)
 	defer proxyServer.Close()
@@ -42,7 +44,7 @@ func TestHTTPConnections(t *testing.T) {
 	var user string
 	var pass string
 
-	for key, value := range globalState.ValidCredentials {
+	for key, value := range state.GlobalStateInstance.ValidCredentials {
 		user = key
 		pass = value
 	}
@@ -95,6 +97,13 @@ func TestHTTPConnections(t *testing.T) {
 		}
 	}
 
-	t.Errorf("tiketasi 10 sekmingu uzklausu, gauta sekmingu uzklausu: %v, gauta nesekmingu uzklausu: %v", successCount, rejectedCount)
+	expectedSuccess := 10
+	expectedRejected := connections - expectedSuccess
 
+	if successCount != expectedSuccess || rejectedCount != expectedRejected {
+		t.Errorf("Limitu tikrinimo klaida. Tikėtasi 10 OK ir %d TooManyRequests. Gauta: %d OK, %d Rejected",
+			expectedRejected, successCount, rejectedCount)
+	} else {
+		t.Logf("Limitu testas sėkmingas. Gauta %d OK ir %d Rejected", successCount, rejectedCount)
+	}
 }
