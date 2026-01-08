@@ -13,11 +13,11 @@ import (
 	"time"
 )
 
-type ProxyServer struct {
+type Server struct {
 	GlobalState *state.GlobalState
 }
 
-func (p *ProxyServer) ProxyHandler(w http.ResponseWriter, r *http.Request) {
+func (p *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodConnect {
 		p.HandleHTTPSConnect(w, r)
@@ -26,7 +26,7 @@ func (p *ProxyServer) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *ProxyServer) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState, wg *sync.WaitGroup) {
+func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	limiter := limits.NewTrackingWriter(user, dst)
@@ -35,11 +35,11 @@ func (p *ProxyServer) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *st
 	dst.Close()
 }
 
-func (p *ProxyServer) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (*state.UserState, string, func(), bool) {
+func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (*state.UserState, string, func(), bool) {
 	username, authorized := auth.Authenticate(r, p.GlobalState.ValidCredentials)
 
 	if !authorized {
-		http.Error(w, "Autentifikavimo klaida", http.StatusUnauthorized)
+		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
 	p.GlobalState.Lock()
@@ -54,12 +54,12 @@ func (p *ProxyServer) getAuthorizedUser(w http.ResponseWriter, r *http.Request) 
 	defer user.Unlock()
 
 	if user.DataUsed > limits.DataLimit {
-		http.Error(w, "Duomenu limitas viršytas", http.StatusTooManyRequests)
+		http.Error(w, "Data limit has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
 
 	if user.ActiveConnections >= 10 {
-		http.Error(w, "Virsytas maksimalus leistinas prisijungimu skaicius", http.StatusTooManyRequests)
+		http.Error(w, "Connection limits has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
 	user.ActiveConnections++
@@ -74,7 +74,7 @@ func (p *ProxyServer) getAuthorizedUser(w http.ResponseWriter, r *http.Request) 
 
 }
 
-func (p *ProxyServer) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
+func (p *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 
 	user, username, cleanup, ok := p.getAuthorizedUser(w, r)
 
@@ -83,11 +83,11 @@ func (p *ProxyServer) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request)
 	}
 	defer cleanup()
 
-	log.Printf("[HTTPS] Vartotojas: %s | Serveris: %s", username, r.Host)
+	log.Printf("[HTTPS] User: %s | Server: %s", username, r.Host)
 
 	targetConn, err := net.DialTimeout("tcp", r.Host, limits.TimeLimit)
 	if err != nil {
-		http.Error(w, "Vartotojas virsijo uzklausos laiko limita", http.StatusServiceUnavailable)
+		http.Error(w, "User exceeded time limit", http.StatusServiceUnavailable)
 		return
 	}
 	defer targetConn.Close()
@@ -122,7 +122,7 @@ func (p *ProxyServer) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request)
 	wg.Wait()
 }
 
-func (p *ProxyServer) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
+func (p *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 	user, username, cleanup, ok := p.getAuthorizedUser(w, r)
 
 	if !ok {
@@ -130,7 +130,7 @@ func (p *ProxyServer) HandleHTTPRequests(w http.ResponseWriter, r *http.Request)
 	}
 	defer cleanup()
 
-	log.Printf("[HTTP] Vartotojas: %s | Serveris: %s", username, r.Host)
+	log.Printf("[HTTP] User: %s | Server: %s", username, r.Host)
 
 	req := r.Clone(r.Context())
 	req.Header.Del("Proxy-Authorization")
@@ -144,10 +144,10 @@ func (p *ProxyServer) HandleHTTPRequests(w http.ResponseWriter, r *http.Request)
 	resp, err := client.Do(req)
 	if err != nil {
 		if os.IsTimeout(err) {
-			http.Error(w, "Vartotojas virsijo uzklausos laiko limita", http.StatusServiceUnavailable)
+			http.Error(w, "User exceeded time limit", http.StatusServiceUnavailable)
 			return
 		}
-		http.Error(w, "Nepavyko pasiekti serverio", http.StatusBadGateway)
+		http.Error(w, "Could not reach server", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()

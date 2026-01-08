@@ -1,6 +1,7 @@
-package proxy
+package main
 
 import (
+	"awesomeProject11/proxy"
 	"awesomeProject11/state"
 	"encoding/base64"
 	"io"
@@ -24,7 +25,7 @@ func TestHTTPConnections(t *testing.T) {
 	testGlobalState.UserMap["user"] = &state.UserState{}
 	testGlobalState.Unlock()
 
-	proxyInstance := &ProxyServer{
+	proxyInstance := &proxy.Server{
 		GlobalState: testGlobalState,
 	}
 

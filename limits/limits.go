@@ -32,7 +32,7 @@ func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
 	if d.user.DataUsed > DataLimit {
 		d.user.Unlock()
-		return 0, fmt.Errorf("Duomenu limitas viršytas")
+		return 0, fmt.Errorf("Data limit exceeded")
 	}
 
 	d.user.Unlock()
@@ -53,7 +53,7 @@ func (d *dataTrackingReader) Read(p []byte) (int, error) {
 	d.user.Lock()
 	if d.user.DataUsed > DataLimit {
 		d.user.Unlock()
-		return 0, fmt.Errorf("Duomenu limitas viršytas")
+		return 0, fmt.Errorf("Data limit exceeded")
 	}
 	d.user.Unlock()
 

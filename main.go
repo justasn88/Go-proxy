@@ -18,7 +18,7 @@ func main() {
 		ValidCredentials: allowedUser,
 	}
 
-	server := &proxy.ProxyServer{
+	server := &proxy.Server{
 		GlobalState: myGlobalState,
 	}
 
