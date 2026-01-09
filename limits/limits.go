@@ -28,21 +28,15 @@ type NopCloserWriter struct {
 func (n *NopCloserWriter) Close() error { return nil }
 
 func (d *dataTrackingWriter) Write(p []byte) (int, error) {
-	d.user.Lock()
 
-	if d.user.DataUsed > DataLimit {
-		d.user.Unlock()
+	if d.user.IsOverLimit(DataLimit) {
 		return 0, fmt.Errorf("Data limit exceeded")
 	}
-
-	d.user.Unlock()
 
 	n, err := d.wc.Write(p)
 
 	if n > 0 {
-		d.user.Lock()
-		d.user.DataUsed += int64(n)
-		d.user.Unlock()
+		d.user.AddData(int64(n))
 	}
 
 	return n, err
@@ -51,7 +45,7 @@ func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 func (d *dataTrackingReader) Read(p []byte) (int, error) {
 
 	d.user.Lock()
-	if d.user.DataUsed > DataLimit {
+	if d.user.IsOverLimit(DataLimit) {
 		d.user.Unlock()
 		return 0, fmt.Errorf("Data limit exceeded")
 	}
@@ -59,9 +53,9 @@ func (d *dataTrackingReader) Read(p []byte) (int, error) {
 
 	n, err := d.rc.Read(p)
 	if n > 0 {
-		d.user.Lock()
-		d.user.DataUsed += int64(n)
-		d.user.Unlock()
+
+		d.user.AddData(int64(n))
+
 	}
 	return n, err
 }

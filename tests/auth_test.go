@@ -1,4 +1,4 @@
-package main
+package tests
 
 import (
 	auth2 "awesomeProject11/auth"

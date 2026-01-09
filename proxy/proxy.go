@@ -36,38 +36,26 @@ func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.U
 }
 
 func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (*state.UserState, string, func(), bool) {
-	username, authorized := auth.Authenticate(r, p.GlobalState.ValidCredentials)
+	username, authorized := auth.Authenticate(r, p.GlobalState.GetCredentials())
 
 	if !authorized {
 		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
-	p.GlobalState.Lock()
-	user, exists := p.GlobalState.UserMap[username]
-	if !exists {
-		user = &state.UserState{}
-		p.GlobalState.UserMap[username] = user
-	}
-	p.GlobalState.Unlock()
+	user := p.GlobalState.GetOrCreateUser(username)
 
-	user.Lock()
-	defer user.Unlock()
-
-	if user.DataUsed > limits.DataLimit {
+	if user.IsOverLimit(limits.DataLimit) {
 		http.Error(w, "Data limit has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
 
-	if user.ActiveConnections >= 10 {
+	if !user.TryIncrementConnections(10) {
 		http.Error(w, "Connection limits has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
-	user.ActiveConnections++
 
 	cleanup := func() {
-		user.Lock()
-		user.ActiveConnections--
-		user.Unlock()
+		user.DecrementConnections()
 	}
 
 	return user, username, cleanup, true

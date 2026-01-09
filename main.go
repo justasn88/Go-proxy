@@ -13,10 +13,7 @@ func main() {
 
 	allowedUser := map[string]string{"user": "pass"}
 
-	myGlobalState := &state.GlobalState{
-		UserMap:          map[string]*state.UserState{},
-		ValidCredentials: allowedUser,
-	}
+	myGlobalState := state.NewGlobalState(allowedUser)
 
 	server := &proxy.Server{
 		GlobalState: myGlobalState,

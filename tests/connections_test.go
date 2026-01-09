@@ -1,4 +1,4 @@
-package main
+package tests
 
 import (
 	"awesomeProject11/proxy"
