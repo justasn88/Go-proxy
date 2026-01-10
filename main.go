@@ -2,7 +2,7 @@ package main
 
 import (
 	"awesomeProject11/proxy"
-	"awesomeProject11/state"
+	"awesomeProject11/repo"
 	"log"
 	"net/http"
 	"os"
@@ -13,10 +13,10 @@ func main() {
 
 	allowedUser := map[string]string{"user": "pass"}
 
-	myGlobalState := state.NewGlobalState(allowedUser)
+	Repository := repo.NewMemoryRepo(allowedUser)
 
 	server := &proxy.Server{
-		GlobalState: myGlobalState,
+		Repo: Repository,
 	}
 
 	log.Println("Server starting on :8080")

@@ -1,7 +1,8 @@
 package limits
 
 import (
-	"awesomeProject11/state"
+	"awesomeProject11/domain"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -12,12 +13,12 @@ const DataLimit = 1024 * 1024 * 1024
 const TimeLimit = 1 * time.Hour
 
 type dataTrackingWriter struct {
-	user *state.UserState
+	user domain.User
 	wc   io.WriteCloser
 }
 
 type dataTrackingReader struct {
-	user *state.UserState
+	user domain.User
 	rc   io.ReadCloser
 }
 
@@ -29,7 +30,7 @@ func (n *NopCloserWriter) Close() error { return nil }
 
 func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
-	if d.user.IsOverLimit(DataLimit) {
+	if d.user.IsOverDataLimit(DataLimit) {
 		return 0, fmt.Errorf("Data limit exceeded")
 	}
 
@@ -44,12 +45,9 @@ func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
 func (d *dataTrackingReader) Read(p []byte) (int, error) {
 
-	d.user.Lock()
-	if d.user.IsOverLimit(DataLimit) {
-		d.user.Unlock()
+	if d.user.IsOverDataLimit(DataLimit) {
 		return 0, fmt.Errorf("Data limit exceeded")
 	}
-	d.user.Unlock()
 
 	n, err := d.rc.Read(p)
 	if n > 0 {
@@ -68,14 +66,14 @@ func (d *dataTrackingWriter) Close() error {
 	return d.wc.Close()
 }
 
-func NewTrackingWriter(user *state.UserState, wc io.WriteCloser) io.WriteCloser {
+func NewTrackingWriter(user domain.User, wc io.WriteCloser) io.WriteCloser {
 	return &dataTrackingWriter{
 		user: user,
 		wc:   wc,
 	}
 }
 
-func NewTrackingReader(user *state.UserState, rc io.ReadCloser) io.ReadCloser {
+func NewTrackingReader(user domain.User, rc io.ReadCloser) io.ReadCloser {
 	return &dataTrackingReader{
 		user: user,
 		rc:   rc,

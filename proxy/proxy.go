@@ -2,8 +2,8 @@ package proxy
 
 import (
 	"awesomeProject11/auth"
+	"awesomeProject11/domain"
 	"awesomeProject11/limits"
-	"awesomeProject11/state"
 	"io"
 	"log"
 	"net"
@@ -14,7 +14,7 @@ import (
 )
 
 type Server struct {
-	GlobalState *state.GlobalState
+	Repo domain.Repository
 }
 
 func (p *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,25 +26,25 @@ func (p *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *state.UserState, wg *sync.WaitGroup) {
+func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *domain.User, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	limiter := limits.NewTrackingWriter(user, dst)
+	limiter := limits.NewTrackingWriter(*user, dst)
 	io.Copy(limiter, src)
 
 	dst.Close()
 }
 
-func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (*state.UserState, string, func(), bool) {
-	username, authorized := auth.Authenticate(r, p.GlobalState.GetCredentials())
+func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
+	username, authorized := auth.Authenticate(r, p.Repo.GetCredentials())
 
 	if !authorized {
 		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
-	user := p.GlobalState.GetOrCreateUser(username)
+	user := p.Repo.GetOrCreateUser(username)
 
-	if user.IsOverLimit(limits.DataLimit) {
+	if user.IsOverDataLimit(limits.DataLimit) {
 		http.Error(w, "Data limit has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
@@ -104,8 +104,8 @@ func (p *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go p.tunnelConn(targetConn, clientConn, user, &wg)
-	go p.tunnelConn(clientConn, targetConn, user, &wg)
+	go p.tunnelConn(targetConn, clientConn, &user, &wg)
+	go p.tunnelConn(clientConn, targetConn, &user, &wg)
 
 	wg.Wait()
 }

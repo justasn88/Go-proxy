@@ -2,7 +2,7 @@ package tests
 
 import (
 	"awesomeProject11/proxy"
-	"awesomeProject11/state"
+	"awesomeProject11/repo"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -16,17 +16,12 @@ import (
 const connections = 14
 
 func TestHTTPConnections(t *testing.T) {
-	testGlobalState := &state.GlobalState{
-		UserMap:          make(map[string]*state.UserState),
-		ValidCredentials: map[string]string{"user": "pass"},
-	}
 
-	testGlobalState.Lock()
-	testGlobalState.UserMap["user"] = &state.UserState{}
-	testGlobalState.Unlock()
+	creds := map[string]string{"user": "pass"}
+	repository := repo.NewMemoryRepo(creds)
 
 	proxyInstance := &proxy.Server{
-		GlobalState: testGlobalState,
+		Repo: repository,
 	}
 
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,22 +35,13 @@ func TestHTTPConnections(t *testing.T) {
 	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Host = strings.TrimPrefix(targetURL, "http://")
 		r.URL.Scheme = "http"
-
 		proxyInstance.HandleHTTPRequests(w, r)
 	})
 
 	proxyServer := httptest.NewServer(proxyHandler)
 	defer proxyServer.Close()
 
-	var user string
-	var pass string
-
-	for key, value := range testGlobalState.ValidCredentials {
-		user = key
-		pass = value
-	}
-
-	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))
+	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
 
 	var wg sync.WaitGroup
 	statusCodes := make(chan int, connections)
@@ -65,14 +51,9 @@ func TestHTTPConnections(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			transport := &http.Transport{
-				DisableKeepAlives: true,
-				MaxIdleConns:      0,
-			}
-
 			client := http.Client{
 				Timeout:   40 * time.Second,
-				Transport: transport,
+				Transport: &http.Transport{DisableKeepAlives: true},
 			}
 
 			req, _ := http.NewRequest(http.MethodGet, proxyServer.URL, nil)
@@ -80,7 +61,7 @@ func TestHTTPConnections(t *testing.T) {
 			resp, err := client.Do(req)
 
 			if err != nil {
-				t.Logf("Uzklausa nepavyko: %v", err)
+				t.Logf("Request failed: %v", err)
 				return
 			}
 			defer resp.Body.Close()
@@ -100,8 +81,6 @@ func TestHTTPConnections(t *testing.T) {
 			successCount++
 		} else if status == http.StatusTooManyRequests {
 			rejectedCount++
-		} else {
-			t.Errorf("netiketa klaida: %v", status)
 		}
 	}
 
@@ -109,9 +88,9 @@ func TestHTTPConnections(t *testing.T) {
 	expectedRejected := connections - expectedSuccess
 
 	if successCount != expectedSuccess || rejectedCount != expectedRejected {
-		t.Errorf("Limitu tikrinimo klaida. Tiketasi gauti %v statusOK ir %v TooManyRequests. Gaunta: %v StatusOK, ir %v TooManyRequests", expectedSuccess, expectedRejected, successCount, rejectedCount)
+		t.Errorf("Connection limit test error. expected to get %v statusOK and %v TooManyRequests. Got: %v StatusOK and %v TooManyRequests", expectedSuccess, expectedRejected, successCount, rejectedCount)
 	} else {
-		t.Logf("Limitu testas sekmingas. Gaunta %v StatusOK ir %v TooManyRequests", successCount, rejectedCount)
+		t.Logf("Test passed. Got %v StatusOK and %v TooManyRequests", successCount, rejectedCount)
 	}
 
 }
