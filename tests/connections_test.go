@@ -65,7 +65,12 @@ func TestHTTPConnections(t *testing.T) {
 				return
 			}
 			defer resp.Body.Close()
-			io.ReadAll(resp.Body)
+			_, err = io.ReadAll(resp.Body)
+
+			if err != nil {
+				t.Logf("Failed to read body: %v", err)
+			}
+
 			statusCodes <- resp.StatusCode
 
 		}()

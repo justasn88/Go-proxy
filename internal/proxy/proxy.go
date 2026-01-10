@@ -26,12 +26,14 @@ func (p *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user *domain.User, wg *sync.WaitGroup) {
+func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.User, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	limiter := limits.NewTrackingWriter(*user, dst)
-	io.Copy(limiter, src)
-
+	limiter := limits.NewTrackingWriter(user, dst)
+	_, err := io.Copy(limiter, src)
+	if err != nil {
+		log.Printf("Tunnel copy error: %v", err)
+	}
 	dst.Close()
 }
 
@@ -39,6 +41,8 @@ func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (doma
 	username, authorized := auth.Authenticate(r, p.Repo.GetCredentials())
 
 	if !authorized {
+		w.Header().Set("Proxy-Authorization", `Basic realm="Proxy"`)
+
 		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
@@ -98,14 +102,24 @@ func (p *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deadline := time.Now().Add(limits.TimeLimit)
-	clientConn.SetDeadline(deadline)
-	targetConn.SetDeadline(deadline)
+
+	err = clientConn.SetDeadline(deadline)
+	if err != nil {
+		log.Printf("Failed to set deadline: %v", err)
+		return
+	}
+
+	err = targetConn.SetDeadline(deadline)
+	if err != nil {
+		log.Printf("Failed to set deadline: %v", err)
+		return
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go p.tunnelConn(targetConn, clientConn, &user, &wg)
-	go p.tunnelConn(clientConn, targetConn, &user, &wg)
+	go p.tunnelConn(targetConn, clientConn, user, &wg)
+	go p.tunnelConn(clientConn, targetConn, user, &wg)
 
 	wg.Wait()
 }
@@ -147,8 +161,8 @@ func (p *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	tracker := limits.NewTrackingWriter(user, &limits.NopCloserWriter{w})
+	tracker := limits.NewTrackingWriter(user, &limits.NopCloserWriter{ResponseWriter: w})
 	if _, err = io.Copy(tracker, resp.Body); err != nil {
-		log.Printf("Ryšys nutrauktas: %v", err)
+		log.Printf("Connection error: %v", err)
 	}
 }
