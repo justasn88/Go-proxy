@@ -1,7 +1,7 @@
 package limits
 
 import (
-	"awesomeProject11/domain"
+	"awesomeProject11/internal/domain"
 
 	"fmt"
 	"io"

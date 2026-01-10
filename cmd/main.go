@@ -1,8 +1,8 @@
 package main
 
 import (
-	"awesomeProject11/proxy"
-	"awesomeProject11/repo"
+	"awesomeProject11/internal/proxy"
+	"awesomeProject11/internal/repo"
 	"log"
 	"net/http"
 	"os"

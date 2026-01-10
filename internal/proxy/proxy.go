@@ -1,9 +1,9 @@
 package proxy
 
 import (
-	"awesomeProject11/auth"
-	"awesomeProject11/domain"
-	"awesomeProject11/limits"
+	"awesomeProject11/internal/auth"
+	"awesomeProject11/internal/domain"
+	"awesomeProject11/internal/limits"
 	"io"
 	"log"
 	"net"

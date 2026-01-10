@@ -1,7 +1,6 @@
-package tests
+package auth
 
 import (
-	auth2 "awesomeProject11/auth"
 	"net/http"
 	"testing"
 )
@@ -50,7 +49,7 @@ func TestAuthenticate(t *testing.T) {
 				req.Header.Set("Proxy-Authorization", tt.headerValue)
 			}
 
-			user, auth := auth2.Authenticate(req, creds)
+			user, auth := Authenticate(req, creds)
 
 			if auth != tt.wantAuthorized {
 				t.Errorf("Authenticate() authorized = %v, norėjome %v", auth, tt.wantAuthorized)

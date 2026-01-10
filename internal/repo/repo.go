@@ -1,7 +1,7 @@
 package repo
 
 import (
-	"awesomeProject11/domain"
+	"awesomeProject11/internal/domain"
 	"sync"
 )
 
