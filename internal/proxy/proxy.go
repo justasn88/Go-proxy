@@ -17,16 +17,16 @@ type Server struct {
 	Repo domain.Repository
 }
 
-func (p *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodConnect {
-		p.HandleHTTPSConnect(w, r)
+		s.HandleHTTPSConnect(w, r)
 	} else {
-		p.HandleHTTPRequests(w, r)
+		s.HandleHTTPRequests(w, r)
 	}
 }
 
-func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.User, wg *sync.WaitGroup) {
+func (s *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.User, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	limiter := limits.NewTrackingWriter(user, dst)
@@ -37,16 +37,16 @@ func (p *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.U
 	dst.Close()
 }
 
-func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
-	username, authorized := auth.Authenticate(r, p.Repo.GetCredentials())
+func (s *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
+	username, authorized := auth.Authenticate(r, s.Repo.GetCredentials())
 
 	if !authorized {
-		w.Header().Set("Proxy-Authorization", `Basic realm="Proxy"`)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
 
 		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
-	user := p.Repo.GetOrCreateUser(username)
+	user := s.Repo.GetOrCreateUser(username)
 
 	if user.IsOverDataLimit(limits.DataLimit) {
 		http.Error(w, "Data limit has been reached", http.StatusTooManyRequests)
@@ -66,9 +66,9 @@ func (p *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (doma
 
 }
 
-func (p *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 
-	user, username, cleanup, ok := p.getAuthorizedUser(w, r)
+	user, username, cleanup, ok := s.getAuthorizedUser(w, r)
 
 	if !ok {
 		return
@@ -118,14 +118,14 @@ func (p *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go p.tunnelConn(targetConn, clientConn, user, &wg)
-	go p.tunnelConn(clientConn, targetConn, user, &wg)
+	go s.tunnelConn(targetConn, clientConn, user, &wg)
+	go s.tunnelConn(clientConn, targetConn, user, &wg)
 
 	wg.Wait()
 }
 
-func (p *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
-	user, username, cleanup, ok := p.getAuthorizedUser(w, r)
+func (s *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
+	user, username, cleanup, ok := s.getAuthorizedUser(w, r)
 
 	if !ok {
 		return
@@ -142,7 +142,10 @@ func (p *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 		req.Body = limits.NewTrackingReader(user, req.Body)
 	}
 
-	client := &http.Client{Timeout: limits.TimeLimit}
+	client := &http.Client{
+		Timeout: limits.TimeLimit,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		if os.IsTimeout(err) {
