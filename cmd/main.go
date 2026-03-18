@@ -13,7 +13,13 @@ func main() {
 
 	allowedUser := map[string]string{"user": "pass"}
 
-	Repository := repo.NewMemoryRepo(allowedUser)
+	redisClient, err := repo.CreateRedisCache(0)
+	if err != nil {
+		log.Fatal("Failed to create cache: %v", err)
+	}
+	log.Println("Succesfully connected to Redis Cache")
+
+	Repository := repo.NewRedisRepo(redisClient, allowedUser)
 
 	server := &proxy.Server{
 		Repo: Repository,

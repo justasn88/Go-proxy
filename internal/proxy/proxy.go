@@ -43,7 +43,7 @@ func (s *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (doma
 	if !authorized {
 		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
 
-		http.Error(w, "Authorization error", http.StatusProxyAuthRequired)
+		http.Error(w, "Authentication error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
 	user := s.Repo.GetOrCreateUser(username)
