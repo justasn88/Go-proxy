@@ -45,9 +45,9 @@ func (u *redisUser) AddData(n int64) {
 
 	err := u.client.IncrBy(ctx, key, n).Err()
 
-	//if err != nil {
-	//	log.Printf("Failed to update user %s, data used in Redis db: %v", u.username, err)
-	//}
+	if err != nil {
+		log.Printf("Failed to update user %s, data used in Redis db: %v", u.username, err)
+	}
 }
 
 func (u *redisUser) IsOverDataLimit(limit int64) bool {
