@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/redis/go-redis/v9"
@@ -100,15 +101,22 @@ func (u *redisUser) DecrementConnections() {
 }
 
 func CreateRedisCache(db int) (*redis.Client, error) {
+	redisAddr := os.Getenv("REDIS_ADDR")
+
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     redisAddr,
 		Password: "asd",
 		DB:       db,
 	})
+
 	ctx := context.Background()
 	err := client.Ping(ctx).Err()
 	if err != nil {
-		return nil, fmt.Errorf("failed to coonect to Redis: %v", err)
+		return nil, fmt.Errorf("failed to connect to Redis at %s: %v", redisAddr, err)
 	}
 	return client, nil
 }
