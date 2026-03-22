@@ -44,7 +44,7 @@ jobs:
         run: go test -v ./...
 
       - name: Build Go binary
-        run: go build -o proxy-app ./main.go
+        run: go build -o proxy-app ./cmd/main.go
 
       - name: Test Docker Build
         run: docker build -t my-proxy-app:test .
