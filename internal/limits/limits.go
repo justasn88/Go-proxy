@@ -31,7 +31,7 @@ func (n *NopCloserWriter) Close() error { return nil }
 func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
 	if d.user.IsOverDataLimit(DataLimit) {
-		return 0, fmt.Errorf("Data limit exceeded")
+		return 0, fmt.Errorf("data limit exceeded")
 	}
 
 	n, err := d.wc.Write(p)
@@ -46,7 +46,7 @@ func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 func (d *dataTrackingReader) Read(p []byte) (int, error) {
 
 	if d.user.IsOverDataLimit(DataLimit) {
-		return 0, fmt.Errorf("Data limit exceeded")
+		return 0, fmt.Errorf("data limit exceeded")
 	}
 
 	n, err := d.rc.Read(p)

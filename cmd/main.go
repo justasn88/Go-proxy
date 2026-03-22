@@ -15,9 +15,9 @@ func main() {
 
 	redisClient, err := repo.CreateRedisCache(0)
 	if err != nil {
-		log.Fatal("Failed to create cache: %v", err)
+		log.Fatalf("Failed to create cache: %v", err)
 	}
-	log.Println("Succesfully connected to Redis Cache")
+	log.Println("Successfully connected to Redis Cache")
 
 	Repository := repo.NewRedisRepo(redisClient, allowedUser)
 

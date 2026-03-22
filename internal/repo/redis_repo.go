@@ -108,7 +108,7 @@ func CreateRedisCache(db int) (*redis.Client, error) {
 	ctx := context.Background()
 	err := client.Ping(ctx).Err()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to coonect to Redis: %v", err)
+		return nil, fmt.Errorf("failed to coonect to Redis: %v", err)
 	}
 	return client, nil
 }

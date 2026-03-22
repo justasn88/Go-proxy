@@ -5,6 +5,7 @@ import (
 	"awesomeProject11/internal/repo"
 	"encoding/base64"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,7 +65,12 @@ func TestHTTPConnections(t *testing.T) {
 				t.Logf("Request failed: %v", err)
 				return
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					log.Printf("Response body close error: %v", err)
+				}
+			}()
+
 			_, err = io.ReadAll(resp.Body)
 
 			if err != nil {
@@ -82,9 +88,10 @@ func TestHTTPConnections(t *testing.T) {
 	var rejectedCount int
 
 	for status := range statusCodes {
-		if status == http.StatusOK {
+		switch status {
+		case http.StatusOK:
 			successCount++
-		} else if status == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			rejectedCount++
 		}
 	}

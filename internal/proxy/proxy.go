@@ -4,6 +4,7 @@ import (
 	"awesomeProject11/internal/auth"
 	"awesomeProject11/internal/domain"
 	"awesomeProject11/internal/limits"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -29,12 +30,24 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.User, wg *sync.WaitGroup) {
 	defer wg.Done()
 
+	defer func() {
+		if closeError := dst.Close(); closeError != nil {
+			log.Printf("Tunnel close error: %v", closeError)
+		}
+	}()
+
+	defer func() {
+		if closeError := src.Close(); closeError != nil {
+			log.Printf("Tunnel close error: %v", closeError)
+		}
+	}()
+
 	limiter := limits.NewTrackingWriter(user, dst)
 	_, err := io.Copy(limiter, src)
 	if err != nil {
 		log.Printf("Tunnel copy error: %v", err)
 	}
-	dst.Close()
+
 }
 
 func (s *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
@@ -82,7 +95,13 @@ func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User exceeded time limit", http.StatusServiceUnavailable)
 		return
 	}
-	defer targetConn.Close()
+	defer func() {
+		err := targetConn.Close()
+
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			log.Printf("Target close error: %v", err)
+		}
+	}()
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -95,7 +114,13 @@ func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	defer clientConn.Close()
+	defer func() {
+		err := clientConn.Close()
+
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			log.Printf("Client close error: %v", err)
+		}
+	}()
 
 	if _, err = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n")); err != nil {
 		return
@@ -155,7 +180,11 @@ func (s *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not reach server", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Response body close error: %v", err)
+		}
+	}()
 
 	for key, values := range resp.Header {
 		for _, value := range values {
