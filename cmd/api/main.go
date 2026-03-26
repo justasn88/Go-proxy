@@ -1,4 +1,4 @@
-package api
+package main
 
 import (
 	"log"
@@ -19,4 +19,9 @@ func main() {
 			log.Printf("failed to write data: %v", err)
 		}
 	})
+
+	log.Printf("API Server is starting on port :%s", apiPort)
+	if err := http.ListenAndServe(":"+apiPort, mux); err != nil {
+		log.Fatalf("API server crashed: %v", err)
+	}
 }
