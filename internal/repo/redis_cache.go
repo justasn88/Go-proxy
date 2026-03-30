@@ -16,7 +16,6 @@ var ctx = context.Background()
 type redisUser struct {
 	client   *redis.Client
 	username string
-	logger   *AsyncLogger
 }
 
 type RedisRepo struct {
