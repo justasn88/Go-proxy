@@ -22,14 +22,12 @@ type redisUser struct {
 type RedisRepo struct {
 	client      *redis.Client
 	credentials map[string]string
-	logger      *AsyncLogger
 }
 
-func NewRedisRepo(client *redis.Client, creds map[string]string, logger *AsyncLogger) domain.Repository {
+func NewRedisRepo(client *redis.Client, creds map[string]string) domain.Repository {
 	return &RedisRepo{
 		client:      client,
 		credentials: creds,
-		logger:      logger,
 	}
 }
 
@@ -41,20 +39,20 @@ func (r *RedisRepo) GetOrCreateUser(username string) domain.User {
 	return &redisUser{
 		client:   r.client,
 		username: username,
-		logger:   r.logger,
 	}
 }
 
 func (u *redisUser) AddData(n int64) {
 	key := "user:" + u.username + ":data_used"
-
 	err := u.client.IncrBy(ctx, key, n).Err()
-
 	if err != nil {
 		log.Printf("Failed to update user %s, data used in Redis db: %v", u.username, err)
 	}
 
-	u.logger.Push(u.username, n)
+	err = u.client.HIncrBy(ctx, "pending_db_logs", u.username, n).Err()
+	if err != nil {
+		log.Printf("failed to update pending logs in Redis: %v", err)
+	}
 }
 
 func (u *redisUser) IsOverDataLimit(limit int64) bool {

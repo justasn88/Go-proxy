@@ -38,11 +38,11 @@ func main() {
 	}
 	log.Println("Successfully connected to Redis Cache")
 
-	asyncLogger := repo.NewAsyncLogger(pgDB, 2000)
+	asyncLogger := repo.NewAsyncLogger(pgDB, redisClient)
 
 	go asyncLogger.Start()
 
-	Repository := repo.NewRedisRepo(redisClient, allowedUsers, asyncLogger)
+	Repository := repo.NewRedisRepo(redisClient, allowedUsers)
 
 	server := &proxy.Server{
 		Repo: Repository,
