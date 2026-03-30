@@ -16,17 +16,20 @@ var ctx = context.Background()
 type redisUser struct {
 	client   *redis.Client
 	username string
+	logger   *AsyncLogger
 }
 
 type RedisRepo struct {
 	client      *redis.Client
 	credentials map[string]string
+	logger      *AsyncLogger
 }
 
-func NewRedisRepo(client *redis.Client, creds map[string]string) domain.Repository {
+func NewRedisRepo(client *redis.Client, creds map[string]string, logger *AsyncLogger) domain.Repository {
 	return &RedisRepo{
 		client:      client,
 		credentials: creds,
+		logger:      logger,
 	}
 }
 
@@ -38,6 +41,7 @@ func (r *RedisRepo) GetOrCreateUser(username string) domain.User {
 	return &redisUser{
 		client:   r.client,
 		username: username,
+		logger:   r.logger,
 	}
 }
 
@@ -49,6 +53,8 @@ func (u *redisUser) AddData(n int64) {
 	if err != nil {
 		log.Printf("Failed to update user %s, data used in Redis db: %v", u.username, err)
 	}
+
+	u.logger.Push(u.username, n)
 }
 
 func (u *redisUser) IsOverDataLimit(limit int64) bool {
