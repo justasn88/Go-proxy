@@ -22,7 +22,7 @@ func NewAsyncLogger(db *sql.DB, bufferSize int) *AsyncLogger {
 	}
 }
 
-func (l *AsyncLogger) start() {
+func (l *AsyncLogger) Start() {
 	log.Println("Async log worker started")
 
 	for entry := range l.queue {

@@ -40,6 +40,8 @@ func main() {
 
 	asyncLogger := repo.NewAsyncLogger(pgDB, 2000)
 
+	go asyncLogger.Start()
+
 	Repository := repo.NewRedisRepo(redisClient, allowedUsers, asyncLogger)
 
 	server := &proxy.Server{
