@@ -27,11 +27,6 @@ func main() {
 		}
 	}()
 
-	allowedUsers, err := repo.LoadCredentialsFromDB(pgDB)
-	if err != nil {
-		log.Printf("Failed to load users from DB: %v", err)
-	}
-
 	redisClient, err := repo.CreateRedisCache(0)
 	if err != nil {
 		log.Fatalf("Failed to create cache: %v", err)
@@ -42,7 +37,7 @@ func main() {
 
 	go asyncLogger.Start()
 
-	Repository := repo.NewRedisRepo(redisClient, allowedUsers)
+	Repository := repo.NewRedisRepo(redisClient, pgDB)
 
 	server := &proxy.Server{
 		Repo: Repository,

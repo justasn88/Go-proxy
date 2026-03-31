@@ -9,5 +9,5 @@ type User interface {
 
 type Repository interface {
 	GetOrCreateUser(username string) User
-	GetCredentials() map[string]string
+	ValidateUser(username, password string) bool
 }

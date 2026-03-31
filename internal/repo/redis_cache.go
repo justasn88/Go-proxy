@@ -3,10 +3,13 @@ package repo
 import (
 	"awesomeProject11/internal/domain"
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -20,13 +23,15 @@ type redisUser struct {
 
 type RedisRepo struct {
 	client      *redis.Client
+	db          *sql.DB
 	credentials map[string]string
+	mu          sync.RWMutex
 }
 
-func NewRedisRepo(client *redis.Client, creds map[string]string) domain.Repository {
+func NewRedisRepo(client *redis.Client, db *sql.DB) domain.Repository {
 	return &RedisRepo{
-		client:      client,
-		credentials: creds,
+		client: client,
+		db:     db,
 	}
 }
 
@@ -39,6 +44,34 @@ func (r *RedisRepo) GetOrCreateUser(username string) domain.User {
 		client:   r.client,
 		username: username,
 	}
+}
+
+func (r *RedisRepo) ValidateUser(username, password string) bool {
+	redisKey := "user_cred:" + username
+
+	cachedPassword, err := r.client.Get(ctx, redisKey).Result()
+
+	if err == nil {
+		return cachedPassword == password
+	} else if err != redis.Nil {
+		log.Printf("Redis error reading credentials: %v", err)
+	}
+	var dbPassword string
+	err = r.db.QueryRow("SELECT password FROM users WHERE username = $1", username).Scan(&dbPassword)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("Posgres query error: %v", err)
+		}
+		return false
+	}
+	if dbPassword == password {
+		err = r.client.Set(ctx, redisKey, dbPassword, time.Hour).Err()
+		if err != nil {
+			log.Printf("Failed to cache credentials in Redis: %v", err)
+		}
+		return true
+	}
+	return false
 }
 
 func (u *redisUser) AddData(n int64) {
