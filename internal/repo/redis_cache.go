@@ -156,3 +156,33 @@ func CreateRedisCache(db int) (*redis.Client, error) {
 	}
 	return client, nil
 }
+
+func (r *RedisRepo) GetUserLimits(username string) (int64, int64) {
+	redisKey := "user_limits" + username
+
+	limits, err := r.client.HGetAll(ctx, redisKey).Result()
+	if err != nil && len(limits) > 0 {
+		dataLimit, _ := strconv.ParseInt(limits["data_limit_bytes"], 10, 64)
+		maxConns, _ := strconv.ParseInt(limits["max_connections"], 10, 64)
+		return dataLimit, maxConns
+	} else if err != redis.Nil && err != nil {
+		log.Printf("Redis error reading limits: %v", err)
+	}
+
+	var dataLimit, maxConns int64
+
+	err = r.db.QueryRow("SELECT data_limit_bytes, max_connections FROM users WHERE username = $1", username).Scan(&dataLimit, maxConns)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("postgres query error for limits: %v", err)
+		}
+		return 0, 0
+	}
+
+	r.client.HSet(ctx, redisKey, map[string]interface{}{
+		"data_limit_bytes": dataLimit,
+		"max_connections":  maxConns,
+	})
+	r.client.Expire(ctx, redisKey, time.Hour)
+	return dataLimit, maxConns
+}

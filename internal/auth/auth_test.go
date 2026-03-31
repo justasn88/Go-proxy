@@ -6,42 +6,35 @@ import (
 )
 
 func TestAuthenticate(t *testing.T) {
-	creds := map[string]string{
-		"admin": "secret",
-	}
-
 	tests := []struct {
-		name           string
-		headerValue    string
-		wantUser       string
-		wantAuthorized bool
+		name         string
+		headerValue  string
+		wantUser     string
+		wantPassword string
+		wantFound    bool
 	}{
 		{
-			name:           "Teisingi duomenys",
-			headerValue:    "Basic YWRtaW46c2VjcmV0",
-			wantUser:       "admin",
-			wantAuthorized: true,
+			name:         "Teisingi duomenys",
+			headerValue:  "Basic YWRtaW46c2VjcmV0", // admin:secret
+			wantUser:     "admin",
+			wantPassword: "secret",
+			wantFound:    true,
 		},
 		{
-			name:           "Blogas slaptažodis",
-			headerValue:    "Basic YWRtaW46YmxvZ2Fz",
-			wantUser:       "",
-			wantAuthorized: false,
+			name:         "Nėra headerio",
+			headerValue:  "",
+			wantUser:     "",
+			wantPassword: "",
+			wantFound:    false,
 		},
 		{
-			name:           "Nėra headerio",
-			headerValue:    "",
-			wantUser:       "",
-			wantAuthorized: false,
-		},
-		{
-			name:           "Blogas formatas",
-			headerValue:    "Bearer token123",
-			wantUser:       "",
-			wantAuthorized: false,
+			name:         "Blogas formatas",
+			headerValue:  "Bearer token123",
+			wantUser:     "",
+			wantPassword: "",
+			wantFound:    false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req, _ := http.NewRequest("GET", "http://example.com", nil)
@@ -49,13 +42,16 @@ func TestAuthenticate(t *testing.T) {
 				req.Header.Set("Proxy-Authorization", tt.headerValue)
 			}
 
-			user, auth := Authenticate(req, creds)
+			user, pass, found := ExtractCredentials(req)
 
-			if auth != tt.wantAuthorized {
-				t.Errorf("Authenticate() authorized = %v, norėjome %v", auth, tt.wantAuthorized)
+			if found != tt.wantFound {
+				t.Errorf("ExtractCredentials() found = %v, norėjome %v", found, tt.wantFound)
 			}
 			if user != tt.wantUser {
-				t.Errorf("Authenticate() user = %v, norėjome %v", user, tt.wantUser)
+				t.Errorf("ExtractCredentials() user = %v, norėjome %v", user, tt.wantUser)
+			}
+			if pass != tt.wantPassword {
+				t.Errorf("ExtractCredentials() pass = %v, norėjome %v", pass, tt.wantPassword)
 			}
 		})
 	}

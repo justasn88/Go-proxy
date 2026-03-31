@@ -9,17 +9,18 @@ import (
 	"time"
 )
 
-const DataLimit = 1024 * 1024 * 1024
 const TimeLimit = 1 * time.Hour
 
 type dataTrackingWriter struct {
-	user domain.User
-	wc   io.WriteCloser
+	user  domain.User
+	limit int64
+	wc    io.WriteCloser
 }
 
 type dataTrackingReader struct {
-	user domain.User
-	rc   io.ReadCloser
+	user  domain.User
+	limit int64
+	rc    io.ReadCloser
 }
 
 type NopCloserWriter struct {
@@ -30,7 +31,7 @@ func (n *NopCloserWriter) Close() error { return nil }
 
 func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
-	if d.user.IsOverDataLimit(DataLimit) {
+	if d.user.IsOverDataLimit(d.limit) {
 		return 0, fmt.Errorf("data limit exceeded")
 	}
 
@@ -45,7 +46,7 @@ func (d *dataTrackingWriter) Write(p []byte) (int, error) {
 
 func (d *dataTrackingReader) Read(p []byte) (int, error) {
 
-	if d.user.IsOverDataLimit(DataLimit) {
+	if d.user.IsOverDataLimit(d.limit) {
 		return 0, fmt.Errorf("data limit exceeded")
 	}
 

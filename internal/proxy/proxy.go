@@ -50,38 +50,35 @@ func (s *Server) tunnelConn(dst io.WriteCloser, src io.ReadCloser, user domain.U
 
 }
 
-func (s *Server) getAuthorizedUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
-	username, authorized := auth.Authenticate(r, s.Repo.GetCredentials())
+func (s *Server) authenticateUser(w http.ResponseWriter, r *http.Request) (domain.User, string, func(), bool) {
+	username, password, found := auth.ExtractCredentials(r)
 
-	if !authorized {
+	if !found || !s.Repo.ValidateUser(username, password) {
 		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
 
 		http.Error(w, "Authentication error", http.StatusProxyAuthRequired)
 		return nil, "", nil, false
 	}
 	user := s.Repo.GetOrCreateUser(username)
+	dataLimit, maxConnections := s.Repo.GetUserLimits(username)
 
-	if user.IsOverDataLimit(limits.DataLimit) {
+	if user.IsOverDataLimit(dataLimit) {
 		http.Error(w, "Data limit has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
-
-	if !user.TryIncrementConnections(10) {
+	if !user.TryIncrementConnections(maxConnections) {
 		http.Error(w, "Connection limits has been reached", http.StatusTooManyRequests)
 		return nil, "", nil, false
 	}
-
 	cleanup := func() {
 		user.DecrementConnections()
 	}
-
 	return user, username, cleanup, true
-
 }
 
 func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 
-	user, username, cleanup, ok := s.getAuthorizedUser(w, r)
+	user, username, cleanup, ok := s.authenticateUser(w, r)
 
 	if !ok {
 		return
@@ -150,7 +147,7 @@ func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
-	user, username, cleanup, ok := s.getAuthorizedUser(w, r)
+	user, username, cleanup, ok := s.authenticateUser(w, r)
 
 	if !ok {
 		return

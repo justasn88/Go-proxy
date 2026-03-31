@@ -10,4 +10,5 @@ type User interface {
 type Repository interface {
 	GetOrCreateUser(username string) User
 	ValidateUser(username, password string) bool
+	GetUserLimits(username string) (dataLimit int64, maxConnections int64)
 }
