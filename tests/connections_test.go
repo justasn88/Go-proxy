@@ -1,8 +1,8 @@
 package tests
 
 import (
+	"awesomeProject11/internal/domain"
 	"awesomeProject11/internal/proxy"
-	"awesomeProject11/internal/repo"
 	"encoding/base64"
 	"io"
 	"log"
@@ -16,10 +16,56 @@ import (
 
 const connections = 14
 
+type mockUser struct {
+	activeConns int64
+	mu          sync.Mutex
+}
+
+func (u *mockUser) AddData(n int64)                  {}
+func (u *mockUser) IsOverDataLimit(limit int64) bool { return false }
+func (u *mockUser) TryIncrementConnections(max int64) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.activeConns >= max {
+		return false
+	}
+	u.activeConns++
+	return true
+}
+func (u *mockUser) DecrementConnections() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.activeConns--
+}
+
+type mockRepo struct {
+	users map[string]*mockUser
+	mu    sync.Mutex
+}
+
+func (m *mockRepo) GetOrCreateUser(username string) domain.User {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.users == nil {
+		m.users = make(map[string]*mockUser)
+	}
+	if _, exists := m.users[username]; !exists {
+		m.users[username] = &mockUser{}
+	}
+	return m.users[username]
+}
+
+func (m *mockRepo) ValidateUser(username, password string) bool {
+	return username == "user" && password == "pass"
+}
+
+func (m *mockRepo) GetUserLimits(username string) (int64, int64) {
+	return 1073741824, 10
+}
+
 func TestHTTPConnections(t *testing.T) {
 
-	creds := map[string]string{"user": "pass"}
-	repository := repo.NewMemoryRepo(creds)
+	repository := &mockRepo{}
 
 	proxyInstance := &proxy.Server{
 		Repo: repository,
@@ -78,7 +124,6 @@ func TestHTTPConnections(t *testing.T) {
 			}
 
 			statusCodes <- resp.StatusCode
-
 		}()
 	}
 	wg.Wait()
@@ -104,5 +149,4 @@ func TestHTTPConnections(t *testing.T) {
 	} else {
 		t.Logf("Test passed. Got %v StatusOK and %v TooManyRequests", successCount, rejectedCount)
 	}
-
 }
