@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -25,7 +24,6 @@ type RedisRepo struct {
 	client      *redis.Client
 	db          *sql.DB
 	credentials map[string]string
-	mu          sync.RWMutex
 }
 
 func NewRedisRepo(client *redis.Client, db *sql.DB) domain.Repository {
