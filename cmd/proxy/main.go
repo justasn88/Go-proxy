@@ -10,7 +10,7 @@ import (
 
 func main() {
 
-	pgDSN := os.Getenv("POSTGRES_DNS")
+	pgDSN := os.Getenv("POSTGRES_DSN")
 
 	if pgDSN == "" {
 		pgDSN = "postgres://proxy_user:proxy_password@localhost:5432/proxy_db?sslmode=disable"

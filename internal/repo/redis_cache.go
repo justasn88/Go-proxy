@@ -86,8 +86,11 @@ func (u *redisUser) AddData(n int64) {
 }
 
 func (u *redisUser) IsOverDataLimit(limit int64) bool {
-	key := "user:" + u.username + ":data_used"
+	if limit == 0 {
+		return false
+	}
 
+	key := "user:" + u.username + ":data_used"
 	val, err := u.client.Get(ctx, key).Result()
 
 	if err == redis.Nil {
@@ -102,7 +105,8 @@ func (u *redisUser) IsOverDataLimit(limit int64) bool {
 		log.Printf("Failed to convert string to int64 in Redis: %v", err)
 		return true
 	}
-	return limit <= used
+
+	return limit < used
 }
 func (u *redisUser) TryIncrementConnections(max int64) bool {
 
@@ -156,10 +160,10 @@ func CreateRedisCache(db int) (*redis.Client, error) {
 }
 
 func (r *RedisRepo) GetUserLimits(username string) (int64, int64) {
-	redisKey := "user_limits" + username
+	redisKey := "user_limits:" + username
 
 	limits, err := r.client.HGetAll(ctx, redisKey).Result()
-	if err != nil && len(limits) > 0 {
+	if err == nil && len(limits) > 0 {
 		dataLimit, _ := strconv.ParseInt(limits["data_limit_bytes"], 10, 64)
 		maxConns, _ := strconv.ParseInt(limits["max_connections"], 10, 64)
 		return dataLimit, maxConns
@@ -169,7 +173,7 @@ func (r *RedisRepo) GetUserLimits(username string) (int64, int64) {
 
 	var dataLimit, maxConns int64
 
-	err = r.db.QueryRow("SELECT data_limit_bytes, max_connections FROM users WHERE username = $1", username).Scan(&dataLimit, maxConns)
+	err = r.db.QueryRow("SELECT data_limit_bytes, max_connections FROM users WHERE username = $1", username).Scan(&dataLimit, &maxConns)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			log.Printf("postgres query error for limits: %v", err)

@@ -38,9 +38,10 @@ func (l *AsyncLogger) Start() {
 	for range ticker.C {
 		err := l.redis.Rename(ctx, "pending_db_logs", "processing_db_logs").Err()
 		if err != nil {
-			if err != redis.Nil {
-				log.Printf("Worker redis error: %v", err)
+			if err.Error() == "ERR no such key" {
+				continue
 			}
+			log.Printf("Worker redis error: %v", err)
 			continue
 		}
 		logs, err := l.redis.HGetAll(ctx, "processing_db_logs").Result()

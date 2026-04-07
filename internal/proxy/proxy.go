@@ -21,7 +21,7 @@ type Server struct {
 func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodConnect {
-		s.HandleHTTPSConnect(w, r)
+		s.HandleHTTPSRequests(w, r)
 	} else {
 		s.HandleHTTPRequests(w, r)
 	}
@@ -76,7 +76,7 @@ func (s *Server) authenticateUser(w http.ResponseWriter, r *http.Request) (domai
 	return user, username, cleanup, true
 }
 
-func (s *Server) HandleHTTPSConnect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleHTTPSRequests(w http.ResponseWriter, r *http.Request) {
 
 	user, username, cleanup, ok := s.authenticateUser(w, r)
 
@@ -156,9 +156,24 @@ func (s *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[HTTP] User: %s | Server: %s", username, r.Host)
 
-	req := r.Clone(r.Context())
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, r.URL.String(), r.Body)
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	for k, v := range r.Header {
+		req.Header[k] = v
+	}
+
+	if req.URL.Scheme == "" {
+		req.URL.Scheme = "http"
+	}
+	if req.URL.Host == "" {
+		req.URL.Host = r.Host
+	}
 	req.Header.Del("Proxy-Authorization")
-	req.RequestURI = ""
 
 	if req.Body != nil {
 		req.Body = limits.NewTrackingReader(user, req.Body)
@@ -166,17 +181,22 @@ func (s *Server) HandleHTTPRequests(w http.ResponseWriter, r *http.Request) {
 
 	client := &http.Client{
 		Timeout: limits.TimeLimit,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("Proxy transport error: %v", err)
 		if os.IsTimeout(err) {
 			http.Error(w, "User exceeded time limit", http.StatusServiceUnavailable)
 			return
 		}
-		http.Error(w, "Could not reach server", http.StatusBadGateway)
+		http.Error(w, "Could not reach server: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			log.Printf("Response body close error: %v", err)

@@ -21,6 +21,7 @@ services:
     build: .
     ports:
       - "8080:8080"
+    restart: always
     environment:
       - REDIS_ADDR=redis:6379
       - POSTGRES_DSN=postgres://proxy_user:proxy_password@postgres:5432/proxy_db?sslmode=disable
